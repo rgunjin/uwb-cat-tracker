@@ -1,0 +1,10 @@
+# --- Hypothesis-driven commit ---
+# Subject: [tag] короткое описание (до 50 симв)
+# tag: env | feat | fix | hyp | doc | chore
+#
+# Hypothesis:
+# Change:
+# Observed:
+# Result: CONFIRMED | REFUTED | INCONCLUSIVE | N/A
+# Log:
+# Ref:
