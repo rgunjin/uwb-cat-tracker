@@ -1,0 +1,9 @@
+CompileFlags:
+  Compiler: /opt/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc
+  Remove:
+    - -fno-printf-return-value
+    - -mfp16-format=*
+    - -fno-reorder-functions
+    - -fno-defer-pop
+    - --param=*
+    - -mno-fdpic
