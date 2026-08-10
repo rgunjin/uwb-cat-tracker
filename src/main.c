@@ -1,5 +1,3 @@
-#include <stdint.h>
-#include <sys/errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/spi.h>
