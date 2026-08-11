@@ -1,6 +1,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/drivers/spi.h>
+#include <zephyr/sys/byteorder.h>
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -35,8 +36,9 @@ int main(void) {
         return err;
     }
 
-    uint32_t dev_id = rx_buf[1] | (rx_buf[2] << 8) |
-                     (rx_buf[3] << 16) | (rx_buf[4] << 24);
+    //uint32_t dev_id = rx_buf[1] | (rx_buf[2] << 8) |
+    //                 (rx_buf[3] << 16) | (rx_buf[4] << 24);
+    uint32_t dev_id = sys_get_le32(&rx_buf[1]);
 
     LOG_INF("raw: %02x %02x %02x %02x %02x",
             rx_buf[0], rx_buf[1], rx_buf[2], rx_buf[3], rx_buf[4]);
