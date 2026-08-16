@@ -28,6 +28,12 @@ is published, and Qorvo's development has moved to the DW3000 family.
   typedefs with `#ifndef uint8`, which never triggers, since these
   are typedefs rather than macros.
 
+- `deca_device_api.h` — the duplicated typedef block (lines 18-55 in
+  the original) replaced with `#include "deca_types.h"`. The header
+  declared the same six types a second time; this only worked
+  because of the `_DECA_UINT32_` style guards, which the rewrite
+  above removed.
+
 Everything else is unmodified. Any further change to vendored code
 goes in this list.
 
