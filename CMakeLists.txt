@@ -5,7 +5,7 @@ project(uwb-cat-tracker)
 
 target_sources(app PRIVATE 
     src/main.c
-    src/dw1000_spi.c
+    src/deca_port.c
     vendor/decadriver/deca_device.c
 	vendor/decadriver/deca_params_init.c
 )
