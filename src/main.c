@@ -4,6 +4,8 @@
 #include "deca_device_api.h"
 #include "deca_port.h"
 
+#include "dw1000_config.h"
+
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 int main(void)
@@ -40,6 +42,22 @@ int main(void)
     uint8 xtalt;
     dwt_readfromdevice(0x2B, 0x0E, 1, &xtalt);
     LOG_INF("FS_XTALT: 0x%02X (trim %u)", xtalt, xtalt & 0x1F);
+
+    dwt_configure((dwt_config_t *)&dw1000_config);
+
+    dwt_settxantennadelay(DW1000_ANT_DELAY);
+    dwt_setrxantennadelay(DW1000_ANT_DELAY);
+
+    LOG_INF("configured: ch%u, PRF64, 6.8M, PLEN128, code 9",
+		    dw1000_config.chan);
+
+    uint8 cc_raw[4];
+    dwt_readfromdevice(0x1F, 0, 4, cc_raw);
+    uint32 cc = cc_raw[0] | (cc_raw[1] << 8) |
+	    (cc_raw[2] << 16) | (cc_raw[3] << 24);
+
+    LOG_INF("CHAN_CTRL: 0x%08X  (TX ch %u, RX ch %u)",
+	        cc, cc & 0x0F, (cc >> 4) & 0x0F);
 
 	return 0;
 }
