@@ -3,6 +3,7 @@
 
 #include "deca_device_api.h"
 #include "deca_port.h"
+#include "deca_regs.h"
 
 #include "dw1000_config.h"
 
@@ -49,7 +50,7 @@ int main(void)
     dwt_setrxantennadelay(DW1000_ANT_DELAY);
 
     LOG_INF("configured: ch%u, PRF64, 6.8M, PLEN128, code 9",
-		    dw1000_config.chan);
+	    dw1000_config.chan);
 
     uint8 cc_raw[4];
     dwt_readfromdevice(0x1F, 0, 4, cc_raw);
@@ -57,7 +58,33 @@ int main(void)
 	    (cc_raw[2] << 16) | (cc_raw[3] << 24);
 
     LOG_INF("CHAN_CTRL: 0x%08X  (TX ch %u, RX ch %u)",
-	        cc, cc & 0x0F, (cc >> 4) & 0x0F);
+	    cc, cc & 0x0F, (cc >> 4) & 0x0F);
+
+    uint8 tx_msg[] = { 'H', 'E', 'L', 'L', 'O' };
+
+    dwt_writetxdata(sizeof(tx_msg) + 2, tx_msg, 0);
+    dwt_writetxfctrl(sizeof(tx_msg) + 2, 0, 0);
+
+    uint32 status;
+
+    /* Clear all stale TX flags before starting. */
+    dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_TX);
+    dwt_starttx(DWT_START_TX_IMMEDIATE);
+
+    int timeout = 10000;
+    do {
+	    status = dwt_read32bitreg(SYS_STATUS_ID);
+	    if (--timeout == 0) {
+		    LOG_ERR("TX timeout, SYS_STATUS: 0x%08X", status);
+		    return -ETIMEDOUT;
+	    }
+    } while (!(status & SYS_STATUS_TXFRS));
+
+    LOG_INF("TXFRS set, SYS_STATUS: 0x%08X", status);
+
+    /* Clear TXFRS (write-1-to-clear), otherwise the next transmission
+     * would see a stale flag. */
+    dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS);
 
 	return 0;
 }
