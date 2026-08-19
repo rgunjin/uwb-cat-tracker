@@ -1,0 +1,27 @@
+menu "UWB cat tracker"
+
+choice
+    prompt "Node role"
+    default UWB_ROLE_TX
+    help
+        Which side of the link this firmware acts as.
+
+config UWB_ROLE_TX
+    bool "Transmitter"
+
+config UWB_ROLE_RX
+    bool "Receiver"
+
+endchoice
+
+config UWB_DUMP_INFO
+    bool "Print OTP calibration data at startup"
+    default n
+    help
+        Reads PART_ID, LOT_ID, crystal trim, antenna delay and TX
+	    power from OTP and prints them. Used to fill in
+	    docs/modules.md when a new module is added.
+
+endmenu
+
+source "Kconfig.zephyr"
