@@ -1,3 +1,4 @@
+#include <sys/errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
@@ -5,6 +6,7 @@
 #include "deca_port.h"
 #include "deca_regs.h"
 #include "dw1000_config.h"
+#include "uwb_frame.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -29,82 +31,33 @@ static void dump_device_info(void) {
 
 
 static void run_tx(void) {
-    uint8 tx_msg[] = { 'H', 'E', 'L', 'L', 'O' };
+    uint8_t msg[] = { 'H', 'E', 'L', 'L', 'O' };
     uint32 count = 0;
-    uint32 status;
     
     while (1) {
-        /* Clear leftover TX flags. SYS_STATUS bits are write-1-to-clear:
-         * writing a 1 clears that bit, writing a 0 leaves it alone. Passing
-         * the mask therefore clears every TX flag and touches nothing else.
-         * Without this the poll below would see a flag from the previous
-         * frame and return immediately. */
-        dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_TX);
-
-        dwt_writetxdata(sizeof(tx_msg) + 2, tx_msg, 0);
-        dwt_writetxfctrl(sizeof(tx_msg) + 2, 0, 0);
-        dwt_starttx(DWT_START_TX_IMMEDIATE);
-
-        int timeout = 10000;
-        do {
-	        status = dwt_read32bitreg(SYS_STATUS_ID);
-	        if (--timeout == 0) {
-		        LOG_ERR("TX timeout, SYS_STATUS: 0x%08X", status);
-                break;
-	        }
-        } while (!(status & SYS_STATUS_TXFRS));
-
-        LOG_INF("frame %u sent: ", ++count);
+        if (uwb_send(msg, sizeof(msg)) == 0) {
+                LOG_INF("frame %u sent", ++count);
+        }
         k_msleep(500);
     }
 }
 
 static void run_rx(void) {
-    uint8 rx_buf[32];
-    uint32 status;
+    uint8_t buf[32];
+    uint16_t len;
     uint32 count = 0;
 
-    /* No timeout: wait indefinitely for a frame */
-    dwt_setrxtimeout(0);
+    LOG_INF("receiver started");
 
     while (1) {
-        /* Same write-1-to-clear as in run_tx(), for the RX flags. */
-        dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_GOOD | SYS_STATUS_ALL_RX_ERR);
+        int err = uwb_receive(buf, sizeof(buf), &len, 2000);
 
-        dwt_rxenable(DWT_START_RX_IMMEDIATE);
-
-        uint32_t start = k_uptime_get_32();
-
-        do {
-            status = dwt_read32bitreg(SYS_STATUS_ID);
-
-            if (k_uptime_get_32() - start > 2000) {
-                LOG_WRN("no frame in 2 s, SYS_STATUS 0x%08X  "
-					"PRD:%d SFDD:%d PHE:%d FCE:%d SFDTO:%d",
-					status,
-					!!(status & SYS_STATUS_RXPRD),
-					!!(status & SYS_STATUS_RXSFDD),
-					!!(status & SYS_STATUS_RXPHE),
-					!!(status & SYS_STATUS_RXFCE),
-					!!(status & SYS_STATUS_RXSFDTO));
-				break;
-            }
-        } while (!(status & (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_ERR)));
-
-        if (status & SYS_STATUS_RXFCG) {
-            uint32 finfo = dwt_read32bitreg(RX_FINFO_ID);
-            uint16 len = finfo & RX_FINFO_RXFLEN_MASK;
-
-            if (len > sizeof(rx_buf)) {
-                len = sizeof(rx_buf);
-            }
-
-            dwt_readrxdata(rx_buf, len, 0);
-            LOG_INF("frame: %u, %u bytes: %.*s", ++count, len, len - 2, rx_buf);
-        } else if (status & SYS_STATUS_ALL_RX_ERR) {
-            LOG_WRN("RX error, SYS_STATUS 0x%08X", status);
-            dwt_rxreset();
+        if (err == 0) {
+            LOG_INF("frame %u, %u bytes: %.*s",	++count, len, len, buf);
+        } else if (err == -ETIMEDOUT) {
+            LOG_WRN("no frame in 2 s");
         }
+        /* -EIO already logged inside uwb_receive() */
     }
 }
 

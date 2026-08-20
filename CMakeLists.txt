@@ -7,6 +7,7 @@ target_sources(app PRIVATE
     src/main.c
     src/deca_port.c
     src/dw1000_config.c
+    src/uwb_frame.c
     vendor/decadriver/deca_device.c
 	vendor/decadriver/deca_params_init.c
 )
