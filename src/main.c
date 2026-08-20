@@ -34,8 +34,11 @@ static void run_tx(void) {
     uint32 status;
     
     while (1) {
-        /* Clear stale TX flags so the poll below cannot see one
-		 * left over from the previous frame. */
+        /* Clear leftover TX flags. SYS_STATUS bits are write-1-to-clear:
+         * writing a 1 clears that bit, writing a 0 leaves it alone. Passing
+         * the mask therefore clears every TX flag and touches nothing else.
+         * Without this the poll below would see a flag from the previous
+         * frame and return immediately. */
         dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_TX);
 
         dwt_writetxdata(sizeof(tx_msg) + 2, tx_msg, 0);
@@ -57,10 +60,51 @@ static void run_tx(void) {
 }
 
 static void run_rx(void) {
-    LOG_INF("receiver: not implemented yet");
+    uint8 rx_buf[32];
+    uint32 status;
+    uint32 count = 0;
+
+    /* No timeout: wait indefinitely for a frame */
+    dwt_setrxtimeout(0);
 
     while (1) {
-        k_msleep(1000);
+        /* Same write-1-to-clear as in run_tx(), for the RX flags. */
+        dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_GOOD | SYS_STATUS_ALL_RX_ERR);
+
+        dwt_rxenable(DWT_START_RX_IMMEDIATE);
+
+        uint32_t start = k_uptime_get_32();
+
+        do {
+            status = dwt_read32bitreg(SYS_STATUS_ID);
+
+            if (k_uptime_get_32() - start > 2000) {
+                LOG_WRN("no frame in 2 s, SYS_STATUS 0x%08X  "
+					"PRD:%d SFDD:%d PHE:%d FCE:%d SFDTO:%d",
+					status,
+					!!(status & SYS_STATUS_RXPRD),
+					!!(status & SYS_STATUS_RXSFDD),
+					!!(status & SYS_STATUS_RXPHE),
+					!!(status & SYS_STATUS_RXFCE),
+					!!(status & SYS_STATUS_RXSFDTO));
+				break;
+            }
+        } while (!(status & (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_ERR)));
+
+        if (status & SYS_STATUS_RXFCG) {
+            uint32 finfo = dwt_read32bitreg(RX_FINFO_ID);
+            uint16 len = finfo & RX_FINFO_RXFLEN_MASK;
+
+            if (len > sizeof(rx_buf)) {
+                len = sizeof(rx_buf);
+            }
+
+            dwt_readrxdata(rx_buf, len, 0);
+            LOG_INF("frame: %u, %u bytes: %.*s", ++count, len, len - 2, rx_buf);
+        } else if (status & SYS_STATUS_ALL_RX_ERR) {
+            LOG_WRN("RX error, SYS_STATUS 0x%08X", status);
+            dwt_rxreset();
+        }
     }
 }
 
