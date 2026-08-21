@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <deca_device_api.h>
 
 #include "uwb_radio.h"
 #include "uwb_msg.h"
@@ -46,6 +47,10 @@ void run_initiator(void)
             struct uwb_msg *rx = (struct uwb_msg *)buf;
 
             if (rx->type == MSG_RESPONSE && rx->seq == seq) {
+                uint32_t poll_tx_ts = dwt_readtxtimestamplo32();
+                uint32_t resp_rx_ts = dwt_readrxtimestamplo32();
+
+                LOG_INF("seq %u: T_round %u", seq, resp_rx_ts - poll_tx_ts);
                 ok++;
             } else {
                 /* Wrong type, or a reply to an earlier poll

@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <deca_device_api.h>
 
 #include "uwb_radio.h"
 #include "uwb_msg.h"
@@ -38,7 +39,11 @@ void run_responder(void)
         };
 
         if (uwb_send((uint8_t *)&reply, sizeof(reply)) == 0) {
-            LOG_INF("replied to poll %u (%u total)", rx->seq, ++count);
+            uint32_t poll_rx_ts = dwt_readrxtimestamplo32();
+            uint32_t resp_tx_ts = dwt_readtxtimestamplo32();
+
+            LOG_INF("poll %u T_reply %u", rx->seq, resp_tx_ts - poll_rx_ts);
+            count++;
         }
     }
 }
