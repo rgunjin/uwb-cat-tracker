@@ -2,11 +2,11 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
-#include "uwb_frame.h"
+#include "uwb_radio.h"
 #include "deca_device_api.h"
 #include "deca_regs.h"
 
-LOG_MODULE_REGISTER(uwb_frame, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(uwb_radio, LOG_LEVEL_INF);
 
 int uwb_send(const uint8_t *data, uint16_t len)
 {

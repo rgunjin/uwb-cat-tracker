@@ -1,12 +1,11 @@
-#include <sys/errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
 #include "deca_device_api.h"
 #include "deca_port.h"
-#include "deca_regs.h"
 #include "dw1000_config.h"
-#include "uwb_frame.h"
+#include "uwb_radio.h"
+#include "uwb_msg.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -82,14 +81,10 @@ static int dw1000_setup(void) {
 #endif
 
 	port_set_dw1000_fastrate();
-    LOG_INF("DEV_ID after fastrate: 0x%08X", dwt_readdevid());
     
     dwt_configure((dwt_config_t *)&dw1000_config);
     dwt_settxantennadelay(DW1000_ANT_DELAY);
     dwt_setrxantennadelay(DW1000_ANT_DELAY);
-
-    LOG_INF("DW1000 ready, DEV_ID 0x%08X, ch%u",
-		dwt_readdevid(), dw1000_config.chan);
 
     return  0;
 }

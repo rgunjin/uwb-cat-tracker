@@ -1,5 +1,5 @@
-#ifndef UWB_FRAME_H
-#define UWB_FRAME_H
+#ifndef UWB_RADIO_H
+#define UWB_RADIO_H
 
 #include <stdint.h>
 
@@ -27,4 +27,4 @@ int uwb_send(const uint8_t *data, uint16_t len);
 int uwb_receive(uint8_t *buf, uint16_t buf_size, uint16_t *len,
 		uint32_t timeout_ms);
 
-#endif /* UWB_FRAME_H */
+#endif /* UWB_RADIO_H */
