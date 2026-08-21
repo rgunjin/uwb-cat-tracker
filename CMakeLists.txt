@@ -8,6 +8,8 @@ target_sources(app PRIVATE
     src/deca_port.c
     src/dw1000_config.c
     src/uwb_radio.c
+    src/initiator.c
+    src/responder.c
     vendor/decadriver/deca_device.c
 	vendor/decadriver/deca_params_init.c
 )

@@ -4,8 +4,8 @@
 #include "deca_device_api.h"
 #include "deca_port.h"
 #include "dw1000_config.h"
-#include "uwb_radio.h"
-#include "uwb_msg.h"
+#include "initiator.h"
+#include "responder.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -26,38 +26,6 @@ static void dump_device_info(void) {
 	LOG_INF("XTAL_TRIM  %u  (FS_XTALT 0x%02X)", otp[4] & 0x1F, xtalt);
 	LOG_INF("ANT_DELAY  %u", otp[3] >> 16);
 	LOG_INF("TX_POWER   0x%08X", otp[2]);
-}
-
-
-static void run_tx(void) {
-    uint8_t msg[] = { 'H', 'E', 'L', 'L', 'O' };
-    uint32 count = 0;
-    
-    while (1) {
-        if (uwb_send(msg, sizeof(msg)) == 0) {
-                LOG_INF("frame %u sent", ++count);
-        }
-        k_msleep(500);
-    }
-}
-
-static void run_rx(void) {
-    uint8_t buf[32];
-    uint16_t len;
-    uint32 count = 0;
-
-    LOG_INF("receiver started");
-
-    while (1) {
-        int err = uwb_receive(buf, sizeof(buf), &len, 2000);
-
-        if (err == 0) {
-            LOG_INF("frame %u, %u bytes: %.*s",	++count, len, len, buf);
-        } else if (err == -ETIMEDOUT) {
-            LOG_WRN("no frame in 2 s");
-        }
-        /* -EIO already logged inside uwb_receive() */
-    }
 }
 
 static int dw1000_setup(void) {
@@ -95,10 +63,10 @@ int main(void) {
         return  -EIO;
     }
 
-#if defined (CONFIG_UWB_ROLE_TX)
-    run_tx();
-#elif defined (CONFIG_UWB_ROLE_RX)
-    run_rx();
+#if defined (CONFIG_UWB_ROLE_INITIATOR)
+    run_initiator();
+#elif defined (CONFIG_UWB_ROLE_RESPONDER)
+    run_responder();
 #else
 #error "No role selected"
 #endif

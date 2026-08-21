@@ -2,15 +2,13 @@ menu "UWB cat tracker"
 
 choice
     prompt "Node role"
-    default UWB_ROLE_TX
-    help
-        Which side of the link this firmware acts as.
+    default UWB_ROLE_INITIATOR
 
-config UWB_ROLE_TX
-    bool "Transmitter"
+config UWB_ROLE_INITIATOR
+    bool "Initiator - sends poll, waits for response"
 
-config UWB_ROLE_RX
-    bool "Receiver"
+config UWB_ROLE_RESPONDER
+    bool "Responder - waits for poll, replies"
 
 endchoice
 

@@ -3,8 +3,8 @@ CompileFlags:
   Add:
     # Both role branches visible to the LSP regardless of which
     # build directory compile_commands.json points at.
-    - -DCONFIG_UWB_ROLE_TX=1
-    - -DCONFIG_UWB_ROLE_RX=1
+    - -DCONFIG_UWB_ROLE_INITIATOR=1
+    - -DCONFIG_UWB_ROLE_RESPONDER=1
     - -DCONFIG_UWB_DUMP_INFO=1
   Remove:
     - -fno-printf-return-value
