@@ -4,3 +4,4 @@ compile_commands.json
 *.elf
 *.hex
 *.map
+CLAUDE.md
