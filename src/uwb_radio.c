@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <sys/errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -5,6 +6,7 @@
 #include "uwb_radio.h"
 #include "deca_device_api.h"
 #include "deca_regs.h"
+#include "deca_types.h"
 
 LOG_MODULE_REGISTER(uwb_radio, LOG_LEVEL_INF);
 
@@ -93,4 +95,60 @@ int uwb_receive(uint8_t *buf, uint16_t buf_size, uint16_t *len, uint32_t timeout
 	dwt_rxreset();
 
 	return -EIO;
+}
+
+uint64_t uwb_rx_timestamp(void)
+{
+    uint8_t ts_tab[5];
+    uint64_t ts = 0;
+
+    dwt_readrxtimestamp(ts_tab);
+
+    /* The chip returns the bytes least significant first, so the loop
+	 * runs backwards: shift what we have up, then add the next byte
+	 * down from the top. */
+    for (int i = 4; i >= 0; i--) {
+        ts <<= 8;
+        ts |= ts_tab[i];
+    }
+
+    return ts;
+}
+
+int uwb_send_delayed(const uint8_t *data, uint16_t len)
+{
+    uint32 status;
+    uint32_t start;
+
+    /* Same write-1-to-clear as in uwb_send(). */
+	dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_TX);
+
+    dwt_writetxdata(len + 2, (uint8 *)data, 0);
+	dwt_writetxfctrl(len + 2, 0, 0);
+
+    if (dwt_starttx(DWT_START_TX_DELAYED) != DWT_SUCCESS) {
+        /* The scheduled moment has already passed. Nothing was sent,
+		 * so there is no point waiting for TXFRS. */
+		status = dwt_read32bitreg(SYS_STATUS_ID);
+		LOG_WRN("delayed TX rejected, HPDWARN %d",
+			!!(status & SYS_STATUS_HPDWARN));
+		return -ETIME;
+    }
+
+    /* Wait in wall-clock time rather than iterations: the frame does
+	 * not go out until the scheduled moment, which is a millisecond
+	 * or more away. */
+    start = k_uptime_get_32();
+
+    do {
+        status = dwt_read32bitreg(SYS_STATUS_ID);
+
+        if (k_uptime_get_32() - start > 20) {
+            LOG_ERR("TX timeout, SYS_STATUS 0x%08X", status);
+            dwt_forcetrxoff();
+            return -EIO;
+        }
+    } while (!(status & SYS_STATUS_TXFRS));
+
+    return 0;
 }

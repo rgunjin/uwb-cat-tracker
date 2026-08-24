@@ -20,4 +20,13 @@ struct uwb_msg {
     uint8_t seq;
 } __packed;
 
+/*! Response: the header plus the two timestamps the initiator needs
+ *  to compute the round trip. Raw DTU ticks, not a difference — the
+ *  subtraction happens on the initiator, as in the vendor example. */
+struct uwb_resp_msg {
+    struct uwb_msg hdr;
+    uint32_t poll_rx_ts;
+    uint32_t resp_tx_ts;
+} __packed;
+
 #endif /* UWB_MSG_H */
