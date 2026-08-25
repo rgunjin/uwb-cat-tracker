@@ -32,7 +32,7 @@
  *  1100 is the value Decawave ship for the nRF52; their comment says
  *  800 might work but was never tested. Worth tightening once the
  *  exchange is reliable, watching for DWT_ERROR at each step. */
-#define POLL_RX_TO_RESP_TX_DLY_UUS  1100
+#define POLL_RX_TO_RESP_TX_DLY_UUS  600
 
 LOG_MODULE_REGISTER(responder, LOG_LEVEL_INF);
 
@@ -103,7 +103,7 @@ next:
                     count, late, bad);
         }
 
-         /* Give the log thread a slot. Safe here: the reply is
+        /* Give the log thread a slot. Safe here: the reply is
          * already on air, so nothing time-critical is pending. */
         k_msleep(1);
     }

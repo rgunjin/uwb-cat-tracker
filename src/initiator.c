@@ -1,8 +1,8 @@
 #include <stdint.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <deca_device_api.h>
 
+#include "deca_device_api.h"
 #include "uwb_radio.h"
 #include "uwb_msg.h"
 #include "initiator.h"
@@ -20,14 +20,21 @@ LOG_MODULE_REGISTER(initiator, LOG_LEVEL_INF);
 /* in air, not vacuum */
 #define SPEED_OF_LIGHT  299702547    
 
+/* How many measurements to accumulate before printing a summary. */
+#define STATS_WINDOW      50
+
 void run_initiator(void)
 {
     uint8_t buf[32];
     uint16_t len;
     uint8_t seq = 0;
-
     uint32_t ok = 0;
     uint32_t lost = 0;
+
+    int32_t sum = 0;
+    uint32_t n = 0;
+    int32_t min = INT32_MAX;
+    int32_t max = INT32_MIN;
 
     LOG_INF("initiator started");
 
@@ -56,7 +63,6 @@ void run_initiator(void)
             goto next;
         }
 
-
         struct uwb_resp_msg *rx = (struct uwb_resp_msg *)buf;
 
         if (rx->hdr.type != MSG_RESPONSE || rx->hdr.seq != seq) {
@@ -66,8 +72,16 @@ void run_initiator(void)
             goto next;
         }
 
+        /* All three relate to the frame just received; read them together
+         * before anything can re-enable the receiver. */
         uint32_t poll_tx_ts = dwt_readtxtimestamplo32();
         uint32_t resp_rx_ts = dwt_readrxtimestamplo32();
+        int32_t integrator  = dwt_readcarrierintegrator();
+
+        /* Sign convention: a positive ratio means the responder's clock runs
+         * slower than ours (the multiplier flips the sign of the raw value). */
+        double clock_offset = integrator *
+            (FREQ_OFFSET_MULTIPLIER * HERTZ_TO_PPM_MULTIPLIER_CHAN_5 / 1.0e6);
 
         /* T_round: measured by the initiator, own clock. */
         uint32_t t_round = resp_rx_ts - poll_tx_ts;
@@ -75,18 +89,30 @@ void run_initiator(void)
         /* T_reply: measured by the responder, its clock, carried in the frame. */
         uint32_t t_reply = rx->resp_tx_ts - rx->poll_rx_ts;
 
-        double tof = (t_round - t_reply) / 2.0 * DWT_TIME_UNITS;
-        double distance = tof * SPEED_OF_LIGHT;
+        /* T_reply was measured by the responder's clock, so it is scaled
+         * into ours before the subtraction. */
+        double tof = (t_round - t_reply * (1.0 - clock_offset)) / 2.0 * DWT_TIME_UNITS;
+        int32_t d = (int32_t)(tof * SPEED_OF_LIGHT * 1000);
 
-        LOG_INF("seq %u: T_round %u  T_reply %u  dist %d mm",
-                seq, t_round, t_reply, (int)(distance * 1000));
+        sum += d;
+        n++;
+
+        if (d < min) min = d;
+        if (d > max) max = d;
+
+        if (n == STATS_WINDOW) {
+            LOG_INF("n=%u  avg %d mm  spread %d  offset %d ppb",
+	                n, sum / (int32_t)n, max - min,
+	                (int32_t)(clock_offset * 1e9));
+            sum = 0;
+            n = 0;
+            min = INT32_MAX;
+            max = INT32_MIN;
+        }
 
         ok++;
 
 next:
-        if ((seq % 20) == 0) {
-            LOG_INF("exchanges: %u ok, %u lost", ok, lost);
-        }
         seq++;
         k_msleep(POLL_INTERVAL_MS);
     }
