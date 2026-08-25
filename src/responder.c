@@ -102,5 +102,9 @@ next:
             LOG_INF("replies: %u, late %u, bad %u",
                     count, late, bad);
         }
+
+         /* Give the log thread a slot. Safe here: the reply is
+         * already on air, so nothing time-critical is pending. */
+        k_msleep(1);
     }
 }
