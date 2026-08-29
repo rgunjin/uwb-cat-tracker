@@ -44,7 +44,7 @@ static int dw1000_setup(void) {
     /* OTP must be read at the slow SPI rate. At 8 MHz the reads
 	 * return 0xFF and leave the OTP interface hung, after which
 	 * even a plain DEV_ID read fails. */
-#if defined (CONFIG_UWB_DUMP_INFO)
+#if defined(CONFIG_UWB_DUMP_INFO)
     dump_device_info();
 #endif
 
@@ -53,6 +53,15 @@ static int dw1000_setup(void) {
     dwt_configure((dwt_config_t *)&dw1000_config);
     dwt_settxantennadelay(DW1000_ANT_DELAY);
     dwt_setrxantennadelay(DW1000_ANT_DELAY);
+
+    LOG_INF("DW1000 ready, DEV_ID 0x%08X, ch%u, ant delay %u",
+		dwt_readdevid(), dw1000_config.chan, DW1000_ANT_DELAY);
+
+    /* Let the log thread drain before the role loop takes over.
+	 * The responder blocks in uwb_receive() with no timeout, so
+	 * without this the startup output would sit in the buffer
+	 * until the first frame arrives. */
+	k_msleep(10);
 
     return  0;
 }
