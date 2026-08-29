@@ -6,6 +6,7 @@
 #include "dw1000_config.h"
 #include "initiator.h"
 #include "responder.h"
+#include "deca_regs.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -21,11 +22,12 @@ static void dump_device_info(void) {
 
 	dwt_readfromdevice(0x2B, 0x0E, 1, &xtalt);
 
-	LOG_INF("PART_ID    0x%08X", otp[0]);
+    LOG_INF("PART_ID    0x%08X", otp[0]);
 	LOG_INF("LOT_ID     0x%08X", otp[1]);
 	LOG_INF("XTAL_TRIM  %u  (FS_XTALT 0x%02X)", otp[4] & 0x1F, xtalt);
-	LOG_INF("ANT_DELAY  %u", otp[3] >> 16);
-	LOG_INF("TX_POWER   0x%08X", otp[2]);
+	LOG_INF("ANT_DELAY  %u (OTP)", otp[3] >> 16);
+	LOG_INF("TX_POWER   0x%08X (OTP)", otp[2]);
+	LOG_INF("TX_POWER   0x%08X (register)", dwt_read32bitreg(TX_POWER_ID));
 }
 
 static int dw1000_setup(void) {
@@ -42,8 +44,10 @@ static int dw1000_setup(void) {
 	}
 
     /* OTP must be read at the slow SPI rate. At 8 MHz the reads
-	 * return 0xFF and leave the OTP interface hung, after which
-	 * even a plain DEV_ID read fails. */
+	 * return 0xFF and leave the OTP interface hung. */
+	uint32 tx_power;
+	dwt_otpread(0x019, &tx_power, 1);   /* channel 5, PRF 64 */
+
 #if defined(CONFIG_UWB_DUMP_INFO)
     dump_device_info();
 #endif
@@ -51,16 +55,26 @@ static int dw1000_setup(void) {
 	port_set_dw1000_fastrate();
     
     dwt_configure((dwt_config_t *)&dw1000_config);
+
+    /* dwt_configure() does not touch TX_POWER; without this the
+	 * chip keeps its reset default instead of the factory
+	 * calibration held in OTP. */
+	dwt_txconfig_t tx_cfg = {
+		.PGdly = TC_PGDELAY_CH5,
+		.power = tx_power,
+	};
+	dwt_configuretxrf(&tx_cfg);
+
     dwt_settxantennadelay(DW1000_ANT_DELAY);
     dwt_setrxantennadelay(DW1000_ANT_DELAY);
 
-    LOG_INF("DW1000 ready, DEV_ID 0x%08X, ch%u, ant delay %u",
-		dwt_readdevid(), dw1000_config.chan, DW1000_ANT_DELAY);
+    LOG_INF("DW1000 ready, DEV_ID 0x%08X, ch%u, ant delay %u, tx power 0x%08X",
+	    dwt_readdevid(), dw1000_config.chan, DW1000_ANT_DELAY,
+	    dwt_read32bitreg(TX_POWER_ID));
 
-    /* Let the log thread drain before the role loop takes over.
-	 * The responder blocks in uwb_receive() with no timeout, so
-	 * without this the startup output would sit in the buffer
-	 * until the first frame arrives. */
+    /* Let the log thread drain before the role loop takes over —
+     * the startup output should not depend on when the first frame
+     * arrives. */
 	k_msleep(10);
 
     return  0;
@@ -72,9 +86,9 @@ int main(void) {
         return  -EIO;
     }
 
-#if defined (CONFIG_UWB_ROLE_INITIATOR)
+#if defined(CONFIG_UWB_ROLE_INITIATOR)
     run_initiator();
-#elif defined (CONFIG_UWB_ROLE_RESPONDER)
+#elif defined(CONFIG_UWB_ROLE_RESPONDER)
     run_responder();
 #else
 #error "No role selected"
