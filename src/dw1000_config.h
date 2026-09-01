@@ -11,6 +11,6 @@ extern const dwt_config_t dw1000_config;
  *  calibrated at 2 m to 16495, since the measured distance came out
  *  282 mm long. One millimetre of error is about 0.107 units: the
  *  delay enters the result four times and T_prop is halved. */
-#define DW1000_ANT_DELAY    16451
+#define DW1000_ANT_DLY    16433
 
 #endif /* DW1000_CONFIG_H */

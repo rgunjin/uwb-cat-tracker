@@ -6,7 +6,7 @@
 #include "uwb_radio.h"
 #include "uwb_msg.h"
 #include "responder.h"
-#include "dw1000_config.h"
+#include "storage.h"
 
 /*! One UWB microsecond (UUS) in device time units.
  *
@@ -44,6 +44,8 @@ void run_responder(void)
     uint32_t late = 0;
     uint32_t bad = 0;
 
+    uint16_t ant_dly = storage_get_ant_dly();
+
     LOG_INF("responder started");
 
     while (1) {
@@ -77,7 +79,7 @@ void run_responder(void)
 		 * (UM 3.3), and its low 9 bits are ignored — hence the mask
 		 * and the addition. */
 		uint32_t resp_tx_ts =
-			((tx_time & 0xFFFFFFFEUL) << 8) + DW1000_ANT_DELAY;
+			((tx_time & 0xFFFFFFFEUL) << 8) + ant_dly;
 
         struct uwb_resp_msg reply = {
             .hdr = {

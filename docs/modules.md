@@ -8,9 +8,9 @@ the module; PART_ID is read from OTP at 0x006 and printed at startup.
 | T1    | 0xD4030E17 | 22        | 0x29496989            | reference |
 | A1    | 0xD483490F | 22        | 0x2C4C6C8C            | 16451     |
 | A2    | 0xD4834E05 | 22        | 0x2B4B6B8B            | —         |
-| A3    | 0xD4820512 | 20        | 0x2B4B6B8B            | —         |
+| A3    | 0xD482CB1D | 23        | 0x2A4A6A8A            | —         |
 | S1    | 0xD4924E20 | 20        | 0x28486888            | —         |
-| S2    | 0xD482CB1D | 23        | 0x2A4A6A8A            | —         |
+| S2    | 0xD4820512 | 20        | 0x2B4B6B8B            | —         |
 | S3    | 0xD4841834 | 24        | —                     | —         |
 | S4    |            |           |                       |           |
 | S5    |            |           |                       |           |

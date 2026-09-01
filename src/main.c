@@ -1,3 +1,5 @@
+#include <stdint.h>
+#include <sys/errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
@@ -7,6 +9,7 @@
 #include "initiator.h"
 #include "responder.h"
 #include "deca_regs.h"
+#include "storage.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -30,7 +33,16 @@ static void dump_device_info(void) {
 	LOG_INF("TX_POWER   0x%08X (register)", dwt_read32bitreg(TX_POWER_ID));
 }
 
-static int dw1000_setup(void) {
+static int dw1000_setup(void)
+{
+    uint16_t ant_dly;
+
+    if (storage_init() != 0) {
+        return  -EIO;
+    }
+
+    ant_dly = storage_get_ant_dly();
+
 	if (deca_port_init() != 0) {
 		return -ENODEV;
 	}
@@ -65,11 +77,11 @@ static int dw1000_setup(void) {
 	};
 	dwt_configuretxrf(&tx_cfg);
 
-    dwt_settxantennadelay(DW1000_ANT_DELAY);
-    dwt_setrxantennadelay(DW1000_ANT_DELAY);
+    dwt_settxantennadelay(ant_dly);
+    dwt_setrxantennadelay(ant_dly);
 
     LOG_INF("DW1000 ready, DEV_ID 0x%08X, ch%u, ant delay %u, tx power 0x%08X",
-	    dwt_readdevid(), dw1000_config.chan, DW1000_ANT_DELAY,
+	    dwt_readdevid(), dw1000_config.chan, ant_dly,
 	    dwt_read32bitreg(TX_POWER_ID));
 
     /* Let the log thread drain before the role loop takes over —

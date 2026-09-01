@@ -83,14 +83,17 @@ int uwb_receive(uint8_t *buf, uint16_t buf_size, uint16_t *len, uint32_t timeout
         return 0;
     }
 
-    LOG_WRN("RX error, SYS_STATUS 0x%08X  PRD:%d SFDD:%d "
-		"PHE:%d FCE:%d SFDTO:%d",
-		status,
-		!!(status & SYS_STATUS_RXPRD),
-		!!(status & SYS_STATUS_RXSFDD),
-		!!(status & SYS_STATUS_RXPHE),
-		!!(status & SYS_STATUS_RXFCE),
-		!!(status & SYS_STATUS_RXSFDTO));
+    LOG_WRN("RX error, SYS_STATUS 0x%08X  PRD:%d SFDD:%d PHD:%d "
+	"PHE:%d FCE:%d RFSL:%d SFDTO:%d LDEERR:%d",
+	status,
+	!!(status & SYS_STATUS_RXPRD),
+	!!(status & SYS_STATUS_RXSFDD),
+	!!(status & SYS_STATUS_RXPHD),
+	!!(status & SYS_STATUS_RXPHE),
+	!!(status & SYS_STATUS_RXFCE),
+	!!(status & SYS_STATUS_RXRFSL),
+	!!(status & SYS_STATUS_RXSFDTO),
+	!!(status & SYS_STATUS_LDEERR));
 
 	dwt_rxreset();
 

@@ -10,6 +10,7 @@ target_sources(app PRIVATE
     src/uwb_radio.c
     src/initiator.c
     src/responder.c
+    src/storage.c
     vendor/decadriver/deca_device.c
 	vendor/decadriver/deca_params_init.c
 )
