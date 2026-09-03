@@ -41,6 +41,8 @@ static int dw1000_setup(void)
         return  -EIO;
     }
 
+    storage_set_ant_dly(16430);   /* temporary: verifying the model */
+
     ant_dly = storage_get_ant_dly();
 
 	if (deca_port_init() != 0) {

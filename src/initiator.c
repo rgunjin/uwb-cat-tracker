@@ -78,6 +78,20 @@ void run_initiator(void)
         uint32_t resp_rx_ts = dwt_readrxtimestamplo32();
         int32_t integrator  = dwt_readcarrierintegrator();
 
+        dwt_rxdiag_t diag;
+        dwt_readdiagnostics(&diag);
+
+        /* RX_POWER - FP_POWER reduces to a ratio: N^2 and the PRF
+	     * constant cancel, so no logarithm is needed. Thresholds are
+	     * 6 dB (ratio 3.98) for line of sight and 10 dB (ratio 10)
+	     * for non-line-of-sight, UM 4.7. */
+	    uint64_t total = (uint64_t)diag.maxGrowthCIR << 17;
+	    uint64_t fp    = (uint64_t)diag.firstPathAmp1 * diag.firstPathAmp1
+	                + (uint64_t)diag.firstPathAmp2 * diag.firstPathAmp2
+	                + (uint64_t)diag.firstPathAmp3 * diag.firstPathAmp3;
+
+	    uint32_t ratio_x100 = (fp > 0) ? (uint32_t)(total * 100 / fp) : 0;
+
         /* Sign convention: a positive ratio means the responder's clock runs
          * slower than ours (the multiplier flips the sign of the raw value). */
         double clock_offset = integrator *
@@ -91,7 +105,7 @@ void run_initiator(void)
 
         /* T_reply was measured by the responder's clock, so it is scaled
          * into ours before the subtraction. */
-        double tof = (t_round - t_reply * (1.0 - clock_offset)) / 2.0 * DWT_TIME_UNITS;
+        double tof = (t_round - t_reply) / 2.0 * DWT_TIME_UNITS;
         int32_t d = (int32_t)(tof * SPEED_OF_LIGHT * 1000);
 
         sum += d;
@@ -101,9 +115,15 @@ void run_initiator(void)
         if (d > max) max = d;
 
         if (n == STATS_WINDOW) {
-            LOG_INF("n=%u  avg %d mm  spread %d  offset %d ppb",
-	                n, sum / (int32_t)n, max - min,
-	                (int32_t)(clock_offset * 1e9));
+            LOG_INF("n=%u  avg %d mm  spread %d  off %d ppb | "
+			        "cir %u  pacc %u  noise %u  ratio %u | "
+			        "f1 %u  f2 %u  f3 %u",
+			        n, sum / (int32_t)n, max - min,
+			        (int32_t)(clock_offset * 1e9),
+			        diag.maxGrowthCIR, diag.rxPreamCount,
+			        diag.stdNoise, ratio_x100,
+			        diag.firstPathAmp1, diag.firstPathAmp2,
+			        diag.firstPathAmp3);
             sum = 0;
             n = 0;
             min = INT32_MAX;
