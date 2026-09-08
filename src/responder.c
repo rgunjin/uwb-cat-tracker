@@ -33,8 +33,6 @@
  *  600 held here over 600 exchanges with no late transmissions. */
 #define POLL_RX_TO_RESP_TX_DLY_UUS  600
 
-#define MY_ADDR     UWB_ADDR_A1
-
 LOG_MODULE_REGISTER(responder, LOG_LEVEL_INF);
 
 void run_responder(void)

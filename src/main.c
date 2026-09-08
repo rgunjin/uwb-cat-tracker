@@ -10,6 +10,7 @@
 #include "responder.h"
 #include "deca_regs.h"
 #include "storage.h"
+#include "uwb_msg.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -69,6 +70,13 @@ static int dw1000_setup(void)
 	port_set_dw1000_fastrate();
     
     dwt_configure((dwt_config_t *)&dw1000_config);
+
+    /* Push frame filtering into the chip: only data frames
+     * addressed to us (or broadcast) reach the RX buffer, instead
+     * of software sorting everything that arrives on air. */
+    dwt_setpanid(UWB_PAN);
+    dwt_setaddress16(MY_ADDR);
+    dwt_enableframefilter(DWT_FF_DATA_EN);
 
     /* dwt_configure() does not touch TX_POWER; without this the
 	 * chip keeps its reset default instead of the factory

@@ -26,6 +26,15 @@
 #define UWB_ADDR_A2     0x0012
 #define UWB_ADDR_A3     0x0013
 
+/*! This node's short address, selected by role so each build gets
+ *  the right one — needed in main.c to program the chip's address
+ *  filter, not just by the role's own .c file. */
+#if defined(CONFIG_UWB_ROLE_INITIATOR)
+#define MY_ADDR         UWB_ADDR_T1
+#elif defined(CONFIG_UWB_ROLE_RESPONDER)
+#define MY_ADDR         UWB_ADDR_A1
+#endif
+
 /*! Function codes, carried after the MAC header. Values follow the
  *  Decawave examples so a frame dump reads the same way. */
 #define MSG_POLL        0xE0
