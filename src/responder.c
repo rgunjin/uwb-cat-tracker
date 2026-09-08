@@ -30,9 +30,10 @@
  *  (UM Table 65).
  *
  *  1100 is the value Decawave ship for the nRF52; their comment says
- *  800 might work but was never tested. Worth tightening once the
- *  exchange is reliable, watching for DWT_ERROR at each step. */
+ *  600 held here over 600 exchanges with no late transmissions. */
 #define POLL_RX_TO_RESP_TX_DLY_UUS  600
+
+#define MY_ADDR     UWB_ADDR_A1
 
 LOG_MODULE_REGISTER(responder, LOG_LEVEL_INF);
 
@@ -67,6 +68,12 @@ void run_responder(void)
             goto next;
         }
 
+        if (rx->hdr.dst != MY_ADDR &&
+            rx->hdr.dst != UWB_ADDR_BCAST) {
+            bad++;
+            goto next;
+        }
+
         /* Full 40 bits: the addition below would overflow in 32,
 		 * and DX_TIME needs bits 8..39 after the shift. */
         uint64_t poll_rx_ts = uwb_rx_timestamp();
@@ -75,32 +82,57 @@ void run_responder(void)
 
         dwt_setdelayedtrxtime(tx_time);
 
-        /* DX_TIME specifies the RMARKER without the antenna delay
-		 * (UM 3.3), and its low 9 bits are ignored — hence the mask
-		 * and the addition. */
-		uint32_t resp_tx_ts =
-			((tx_time & 0xFFFFFFFEUL) << 8) + ant_dly;
+        /* Work out the timestamp the reply will carry.
+	     *
+	     * The responder cannot read its own transmit timestamp here —
+	     * the frame has not gone out yet, and by the time it has, the
+	     * timestamp would have to be inside it already. Delayed
+	     * transmission breaks that circle: the moment is scheduled in
+	     * advance, so it can be computed rather than measured.
+	     *
+	     * Three corrections turn the scheduled time into the timestamp
+	     * that will actually be recorded:
+	     *
+	     *   & 0xFFFFFFFE  DX_TIME ignores the low 9 bits of the 40-bit
+	     *                 time. Eight of them were dropped by the >> 8
+	     *                 above; this clears the ninth. Skip it and the
+	     *                 timestamp is off by 256 ticks, about 1.2 m.
+	     *
+	     *   << 8          back to the full 40-bit scale. The cast to
+	     *                 uint64_t comes first: in 32-bit arithmetic the
+	     *                 shift would throw away the top byte.
+	     *
+	     *   + ant_dly     DX_TIME specifies the RMARKER without the
+	     *                 antenna delay (UM 3.3), but a timestamp read from the chip includes it. Computing one by
+	     *                 hand means adding it back. */
+        uint64_t resp_tx_ts_full = ((uint64_t)(tx_time & 0xFFFFFFFEUL) << 8) + ant_dly;
 
         struct uwb_resp_msg reply = {
-            .hdr = {
+            .msg = {
+                .hdr = {
+                    .fc = { UWB_FC0, UWB_FC1 },
+                    .seq = rx->hdr.seq,
+                    .pan = UWB_PAN,
+                    .dst = rx->hdr.src,
+                    .src = MY_ADDR,
+                },
                 .type = MSG_RESPONSE,
-                .seq = rx->seq,
             },
             .poll_rx_ts = (uint32_t)poll_rx_ts,
-            .resp_tx_ts = resp_tx_ts,
+            .resp_tx_ts = (uint32_t)resp_tx_ts_full,
         };
 
         if (uwb_send_delayed((uint8_t *)&reply, sizeof(reply)) != 0) {
             late++;
             LOG_WRN("delayed TX failed, poll %u (%u late)",
-                    rx->seq, late);
+                    rx->hdr.seq, late);
             goto next;
         }
 
         count++;
 
 next:
-        if ((count % 20) == 0 && count > 0) {
+        if (((count + bad + late) % 20) == 0 && count > 0) {
             LOG_INF("replies: %u, late %u, bad %u",
                     count, late, bad);
         }

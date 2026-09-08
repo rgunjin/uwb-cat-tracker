@@ -40,8 +40,14 @@ void run_initiator(void)
 
     while (1) {
         struct uwb_msg poll = {
+            .hdr = {
+                .fc = { UWB_FC0, UWB_FC1 },
+                .seq = seq,
+                .pan = UWB_PAN,
+                .dst = UWB_ADDR_A1,
+                .src = UWB_ADDR_T1,
+            },
             .type = MSG_POLL,
-            .seq = seq,
         };
 
         if (uwb_send((uint8_t *)&poll, sizeof(poll)) != 0) {
@@ -65,9 +71,11 @@ void run_initiator(void)
 
         struct uwb_resp_msg *rx = (struct uwb_resp_msg *)buf;
 
-        if (rx->hdr.type != MSG_RESPONSE || rx->hdr.seq != seq) {
+        if (rx->msg.type != MSG_RESPONSE ||
+            rx->msg.hdr.seq != seq ||
+            rx->msg.hdr.dst != UWB_ADDR_T1) {
             LOG_WRN("unexpected reply: type %u seq %u, expected %u",
-                    rx->hdr.type, rx->hdr.seq, seq);
+                    rx->msg.type, rx->msg.hdr.seq, seq);
             lost++;
             goto next;
         }
