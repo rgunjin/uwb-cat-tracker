@@ -23,6 +23,11 @@ LOG_MODULE_REGISTER(initiator, LOG_LEVEL_INF);
 /* How many measurements to accumulate before printing a summary. */
 #define STATS_WINDOW      50
 
+/* Above this ratio_x100 (UM 4.7 NLOS threshold, ratio 10) the range
+ * estimate tracks the ratio rather than the true distance — likely a
+ * reflection, not a direct path. Excluded from ranging stats. */
+#define RATIO_REJECT_THRESHOLD  1000
+
 void run_initiator(void)
 {
     uint8_t buf[32];
@@ -35,6 +40,7 @@ void run_initiator(void)
     uint32_t n = 0;
     int32_t min = INT32_MAX;
     int32_t max = INT32_MIN;
+    uint32_t rejected_ratio = 0;
 
     LOG_INF("initiator started");
 
@@ -116,18 +122,22 @@ void run_initiator(void)
         double tof = (t_round - t_reply) / 2.0 * DWT_TIME_UNITS;
         int32_t d = (int32_t)(tof * SPEED_OF_LIGHT * 1000);
 
-        sum += d;
-        n++;
+        if (ratio_x100 > RATIO_REJECT_THRESHOLD) {
+            rejected_ratio++;
+        } else {
+            sum += d;
+            n++;
 
-        if (d < min) min = d;
-        if (d > max) max = d;
+            if (d < min) min = d;
+            if (d > max) max = d;
+        }
 
         if (n == STATS_WINDOW) {
-            LOG_INF("n=%u  avg %d mm  spread %d  off %d ppb | "
+            LOG_INF("n=%u  avg %d mm  spread %d  off %d ppb  rejected %u | "
 			        "cir %u  pacc %u  noise %u  ratio %u | "
 			        "f1 %u  f2 %u  f3 %u",
 			        n, sum / (int32_t)n, max - min,
-			        (int32_t)(clock_offset * 1e9),
+			        (int32_t)(clock_offset * 1e9), rejected_ratio,
 			        diag.maxGrowthCIR, diag.rxPreamCount,
 			        diag.stdNoise, ratio_x100,
 			        diag.firstPathAmp1, diag.firstPathAmp2,
@@ -136,6 +146,7 @@ void run_initiator(void)
             n = 0;
             min = INT32_MAX;
             max = INT32_MIN;
+            rejected_ratio = 0;
         }
 
         ok++;
