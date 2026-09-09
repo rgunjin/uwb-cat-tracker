@@ -11,6 +11,7 @@ target_sources(app PRIVATE
     src/initiator.c
     src/responder.c
     src/storage.c
+    src/cmds.c
     vendor/decadriver/deca_device.c
 	vendor/decadriver/deca_params_init.c
 )
