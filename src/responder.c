@@ -66,7 +66,7 @@ void run_responder(void)
             goto next;
         }
 
-        if (rx->hdr.dst != MY_ADDR &&
+        if (rx->hdr.dst != uwb_my_addr &&
             rx->hdr.dst != UWB_ADDR_BCAST) {
             bad++;
             goto next;
@@ -112,7 +112,7 @@ void run_responder(void)
                     .seq = rx->hdr.seq,
                     .pan = UWB_PAN,
                     .dst = rx->hdr.src,
-                    .src = MY_ADDR,
+                    .src = uwb_my_addr,
                 },
                 .type = MSG_RESPONSE,
             },

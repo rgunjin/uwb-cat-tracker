@@ -14,6 +14,8 @@
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
+uint16_t uwb_my_addr;
+
 static void dump_device_info(void) {
     uint32 otp[5];
     uint8 xtalt;
@@ -31,7 +33,7 @@ static void dump_device_info(void) {
 	LOG_INF("XTAL_TRIM  %u  (FS_XTALT 0x%02X)", otp[4] & 0x1F, xtalt);
 	LOG_INF("ANT_DELAY  %u (OTP)", otp[3] >> 16);
 	LOG_INF("TX_POWER   0x%08X (OTP)", otp[2]);
-	LOG_INF("TX_POWER   0x%08X (register)", dwt_read32bitreg(TX_POWER_ID));
+	LOG_INF("TX_POWER   0x%08X (register, before configure)", dwt_read32bitreg(TX_POWER_ID));
 }
 
 static int dw1000_setup(void)
@@ -41,6 +43,8 @@ static int dw1000_setup(void)
     if (storage_init() != 0) {
         return  -EIO;
     }
+
+    uwb_my_addr = storage_get_addr();
 
     storage_set_ant_dly(16430);   /* temporary: verifying the model */
 
@@ -75,7 +79,7 @@ static int dw1000_setup(void)
      * addressed to us (or broadcast) reach the RX buffer, instead
      * of software sorting everything that arrives on air. */
     dwt_setpanid(UWB_PAN);
-    dwt_setaddress16(MY_ADDR);
+    dwt_setaddress16(uwb_my_addr);
     dwt_enableframefilter(DWT_FF_DATA_EN);
 
     /* dwt_configure() does not touch TX_POWER; without this the

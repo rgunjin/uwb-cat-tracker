@@ -8,6 +8,7 @@
 
 #include "storage.h"
 #include "dw1000_config.h"
+#include "uwb_msg.h"
 
 LOG_MODULE_REGISTER(storage, LOG_LEVEL_INF);
 
@@ -19,6 +20,7 @@ LOG_MODULE_REGISTER(storage, LOG_LEVEL_INF);
 /* Keys. Never reuse a number for a different meaning — old records
  * with that id may still be on the flash. */
 #define ID_ANT_DLY  1
+#define ID_ADDR     2
 
 static struct nvs_fs fs;
 
@@ -86,6 +88,47 @@ int storage_set_ant_dly(uint16_t value)
     }
 
     LOG_INF("antenna delay stored: %u", value);
+
+    return 0;
+}
+
+uint16_t storage_get_addr(void)
+{
+    uint16_t value;
+    int rc;
+    uint16_t default_addr;
+
+#if defined(CONFIG_UWB_ROLE_INITIATOR)
+    default_addr = UWB_ADDR_T1;
+#elif defined(CONFIG_UWB_ROLE_RESPONDER)
+    default_addr = UWB_ADDR_A1;
+#endif
+
+    rc = nvs_read(&fs, ID_ADDR, &value, sizeof(value));
+
+    /* nvs_read returns the number of bytes read, or a negative
+	 * errno; -ENOENT means the key has never been written. */
+    if (rc == sizeof(value)) {
+        return  value;
+    }
+
+    LOG_WRN("no stored address, using default 0x%04X", default_addr);
+
+    return default_addr;
+}
+
+int storage_set_addr(uint16_t value)
+{
+    int rc = nvs_write(&fs, ID_ADDR, &value, sizeof(value));
+
+    /* nvs_write returns the number of bytes written, 0 if the value
+	 * was already there, or a negative errno. */
+    if (rc < 0) {
+        LOG_ERR("cannot store address: %d", rc);
+        return rc;
+    }
+
+    LOG_INF("address stored: 0x%04X", value);
 
     return 0;
 }
