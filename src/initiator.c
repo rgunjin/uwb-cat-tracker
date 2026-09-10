@@ -119,7 +119,7 @@ void run_initiator(void)
 
         /* T_reply was measured by the responder's clock, so it is scaled
          * into ours before the subtraction. */
-        double tof = (t_round - t_reply) / 2.0 * DWT_TIME_UNITS;
+        double tof = (t_round - t_reply * (1.0 - clock_offset)) / 2.0 * DWT_TIME_UNITS;
         int32_t d = (int32_t)(tof * SPEED_OF_LIGHT * 1000);
 
         if (ratio_x100 > RATIO_REJECT_THRESHOLD) {
