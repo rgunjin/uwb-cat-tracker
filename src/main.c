@@ -16,6 +16,7 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 uint16_t uwb_my_addr;
 
+#if defined (CONFIG_UWB_DUMP_INFO)
 static void dump_device_info(void) {
     uint32 otp[5];
     uint8 xtalt;
@@ -35,6 +36,7 @@ static void dump_device_info(void) {
 	LOG_INF("TX_POWER   0x%08X (OTP)", otp[2]);
 	LOG_INF("TX_POWER   0x%08X (register, before configure)", dwt_read32bitreg(TX_POWER_ID));
 }
+#endif
 
 static int dw1000_setup(void)
 {
