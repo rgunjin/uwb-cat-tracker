@@ -72,19 +72,13 @@ struct ieee_hdr {
 	uint16_t src;
 } __packed;
 
-/*! Poll: header plus the function code. */
+/*! Poll and Response: header plus the function code, nothing else.
+ *  The tag only needs the moment of reception; ranging timestamps
+ *  travel in Final and Report instead, and distances are computed
+ *  off-board, not on the tag or the anchor. */
 struct uwb_msg {
 	struct ieee_hdr hdr;
 	uint8_t type;
-} __packed;
-
-/*! Response: the poll frame plus the two timestamps the initiator
- *  needs. Raw device time units — the subtraction happens on the
- *  initiator. */
-struct uwb_resp_msg {
-	struct uwb_msg msg;
-	uint32_t poll_rx_ts;
-	uint32_t resp_tx_ts;
 } __packed;
 
 /*! Raw 40-bit device timestamp, byte order as dwt_readtxtimestamp()

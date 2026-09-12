@@ -6,7 +6,6 @@
 #include "uwb_radio.h"
 #include "uwb_msg.h"
 #include "responder.h"
-#include "storage.h"
 
 /*! One UWB microsecond (UUS) in device time units.
  *
@@ -43,8 +42,6 @@ void run_responder(void)
     uint32_t late = 0;
     uint32_t bad = 0;
 
-    uint16_t ant_dly = storage_get_ant_dly();
-
     LOG_INF("responder started");
 
     while (1) {
@@ -80,44 +77,15 @@ void run_responder(void)
 
         dwt_setdelayedtrxtime(tx_time);
 
-        /* Work out the timestamp the reply will carry.
-	     *
-	     * The responder cannot read its own transmit timestamp here —
-	     * the frame has not gone out yet, and by the time it has, the
-	     * timestamp would have to be inside it already. Delayed
-	     * transmission breaks that circle: the moment is scheduled in
-	     * advance, so it can be computed rather than measured.
-	     *
-	     * Three corrections turn the scheduled time into the timestamp
-	     * that will actually be recorded:
-	     *
-	     *   & 0xFFFFFFFE  DX_TIME ignores the low 9 bits of the 40-bit
-	     *                 time. Eight of them were dropped by the >> 8
-	     *                 above; this clears the ninth. Skip it and the
-	     *                 timestamp is off by 256 ticks, about 1.2 m.
-	     *
-	     *   << 8          back to the full 40-bit scale. The cast to
-	     *                 uint64_t comes first: in 32-bit arithmetic the
-	     *                 shift would throw away the top byte.
-	     *
-	     *   + ant_dly     DX_TIME specifies the RMARKER without the
-	     *                 antenna delay (UM 3.3), but a timestamp read from the chip includes it. Computing one by
-	     *                 hand means adding it back. */
-        uint64_t resp_tx_ts_full = ((uint64_t)(tx_time & 0xFFFFFFFEUL) << 8) + ant_dly;
-
-        struct uwb_resp_msg reply = {
-            .msg = {
-                .hdr = {
-                    .fc = { UWB_FC0, UWB_FC1 },
-                    .seq = rx->hdr.seq,
-                    .pan = UWB_PAN,
-                    .dst = rx->hdr.src,
-                    .src = uwb_my_addr,
-                },
-                .type = MSG_RESPONSE,
+        struct uwb_msg reply = {
+            .hdr = {
+                .fc = { UWB_FC0, UWB_FC1 },
+                .seq = rx->hdr.seq,
+                .pan = UWB_PAN,
+                .dst = rx->hdr.src,
+                .src = uwb_my_addr,
             },
-            .poll_rx_ts = (uint32_t)poll_rx_ts,
-            .resp_tx_ts = (uint32_t)resp_tx_ts_full,
+            .type = MSG_RESPONSE,
         };
 
         if (uwb_send_delayed((uint8_t *)&reply, sizeof(reply)) != 0) {
