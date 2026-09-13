@@ -22,6 +22,10 @@ LOG_MODULE_REGISTER(initiator, LOG_LEVEL_INF);
 /* Gap between exchanges */
 #define POLL_INTERVAL_MS    500
 
+/* How many exchanges between summary lines. Read by the HIL gate;
+ * see uwb-protocol-slots.md, "Формат лога — контракт с гейтом". */
+#define STATS_WINDOW        10
+
 /* Anchors the tag can hear from, in slot order. */
 static const uint16_t anchor_addr[3] = {
     UWB_ADDR_A1, UWB_ADDR_A2, UWB_ADDR_A3,
@@ -43,6 +47,9 @@ void run_initiator(void)
     uint8_t buf[32];
     uint16_t len;
     uint8_t seq = 0;
+    uint32_t n = 0;
+    uint32_t ok = 0;
+    uint32_t lost = 0;
 
     LOG_INF("initiator started, addr 0x%04X", uwb_my_addr);
 
@@ -115,14 +122,25 @@ void run_initiator(void)
 
             answered[idx] = true;
             n_answered++;
-            LOG_INF("poll %u: response from 0x%04X (A%d)",
+            LOG_DBG("poll %u: response from 0x%04X (A%d)",
                     seq, rx->hdr.src, idx + 1);
         }
 
         for (int i = 0; i < 3; i++) {
             if (!answered[i]) {
-                LOG_INF("poll %u: no response from A%d", seq, i + 1);
+                LOG_DBG("poll %u: no response from A%d", seq, i + 1);
             }
+        }
+
+        n++;
+        if (n_answered > 0) {
+            ok++;
+        } else {
+            lost++;
+        }
+
+        if ((n % STATS_WINDOW) == 0) {
+            LOG_INF("n=%u ok %u lost %u", n, ok, lost);
         }
 
         seq++;
