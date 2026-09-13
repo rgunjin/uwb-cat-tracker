@@ -28,9 +28,10 @@
  *  T_reply, so every microsecond here shows up in the range estimate
  *  (UM Table 65).
  *
- *  1100 is the value Decawave ship for the nRF52; their comment says
- *  600 held here over 600 exchanges with no late transmissions. */
-#define POLL_RX_TO_RESP_TX_DLY_UUS  600
+ *  The three anchors share one firmware image and tell their slot
+ *  apart by their own short address (SLOT_RESP_A1 / A2 / A3, see
+ *  uwb_msg.h), so the delay is looked up once at startup rather than
+ *  fixed at compile time. */
 
 LOG_MODULE_REGISTER(responder, LOG_LEVEL_INF);
 
@@ -41,8 +42,31 @@ void run_responder(void)
     uint32_t count = 0;
     uint32_t late = 0;
     uint32_t bad = 0;
+    uint32_t resp_dly_uus;
 
-    LOG_INF("responder started");
+    switch (uwb_my_addr) {
+    case UWB_ADDR_A1:
+        resp_dly_uus = SLOT_RESP_A1;
+        break;
+    case UWB_ADDR_A2:
+        resp_dly_uus = SLOT_RESP_A2;
+        break;
+    case UWB_ADDR_A3:
+        resp_dly_uus = SLOT_RESP_A3;
+        break;
+    default:
+        /* Адрес не входит в {A1, A2, A3} — какой слот занимать в
+         * этом случае, решением человека не закрыто (см. отчёт по
+         * T011). Здесь только безопасная остановка, не решение: не
+         * подставляем случайный слот и не отвечаем вслепую. */
+        LOG_ERR("addr 0x%04X matches no anchor slot (A1 0x%04X, A2 0x%04X, A3 0x%04X); "
+                "responder not starting",
+                uwb_my_addr, UWB_ADDR_A1, UWB_ADDR_A2, UWB_ADDR_A3);
+        return;
+    }
+
+    LOG_INF("responder started, addr 0x%04X, resp slot delay %u UUS",
+            uwb_my_addr, resp_dly_uus);
 
     while (1) {
         /* No timeout: the responder has nothing else to do. */
@@ -73,7 +97,7 @@ void run_responder(void)
 		 * and DX_TIME needs bits 8..39 after the shift. */
         uint64_t poll_rx_ts = uwb_rx_timestamp();
 
-        uint32_t tx_time = (poll_rx_ts + (POLL_RX_TO_RESP_TX_DLY_UUS * UUS_TO_DWT_TIME)) >> 8;
+        uint32_t tx_time = (poll_rx_ts + (resp_dly_uus * UUS_TO_DWT_TIME)) >> 8;
 
         dwt_setdelayedtrxtime(tx_time);
 
