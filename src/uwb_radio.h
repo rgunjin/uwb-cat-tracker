@@ -47,6 +47,16 @@ int uwb_receive(uint8_t *buf, uint16_t buf_size, uint16_t *len,
  */
 uint64_t uwb_rx_timestamp(void);
 
+/*! @brief Read the TX timestamp of the last transmitted frame, all 40 bits.
+ *
+ *  Mirrors uwb_rx_timestamp(): dwt_readtxtimestamp() hands back the same
+ *  five-byte, least-significant-first layout as dwt_readrxtimestamp(),
+ *  just for the frame this node last sent instead of last received.
+ *
+ *  @return the timestamp, 40 significant bits
+ */
+uint64_t uwb_tx_timestamp(void);
+
 /*!
  * @brief Transmit a frame at the time set by dwt_setdelayedtrxtime(),
  *        and wait for it to leave the radio.

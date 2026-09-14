@@ -1,8 +1,10 @@
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/errno.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <deca_device_api.h>
 
 #include "uwb_radio.h"
 #include "uwb_msg.h"
@@ -72,7 +74,14 @@ void run_initiator(void)
             continue;
         }
 
+        /* Final's own delayed-TX schedule and its poll_tx_ts field
+         * both need the full 40 bits, read right after TXFRS so the
+         * antenna delay adjustment in dwt_readtxtimestamp() is not
+         * lost the way a 32-bit reading would. */
+        uint64_t poll_tx_ts = uwb_tx_timestamp();
+
         bool answered[3] = { false, false, false };
+        uint64_t resp_rx_ts[3] = { 0 };
         int n_answered = 0;
         uint32_t win_start = k_uptime_get_32();
 
@@ -120,6 +129,10 @@ void run_initiator(void)
                 continue;
             }
 
+            /* Latched by the chip at reception; stable until the next
+             * dwt_rxenable(), which does not happen before this is
+             * read. */
+            resp_rx_ts[idx] = uwb_rx_timestamp();
             answered[idx] = true;
             n_answered++;
             LOG_DBG("poll %u: response from 0x%04X (A%d)",
@@ -130,6 +143,53 @@ void run_initiator(void)
             if (!answered[i]) {
                 LOG_DBG("poll %u: no response from A%d", seq, i + 1);
             }
+        }
+
+        /* Final's slot is counted from the tag's own poll_tx_ts, not
+         * from anything an anchor sent — this node has that timestamp
+         * already, so the delay is computed the same way responder.c
+         * derives its response's transmit time from poll_rx_ts:
+         * schedule first, then rebuild the 40-bit timestamp from the
+         * scheduled value instead of reading it back after the fact. */
+        uint32_t final_tx_time =
+            (uint32_t)((poll_tx_ts + ((uint64_t)SLOT_FINAL * UUS_TO_DWT_TIME)) >> 8);
+
+        dwt_setdelayedtrxtime(final_tx_time);
+
+        uint64_t final_tx_ts = ((uint64_t)final_tx_time) << 8;
+
+        struct uwb_final_msg final = {
+            .msg = {
+                .hdr = {
+                    .fc = { UWB_FC0, UWB_FC1 },
+                    .seq = seq,
+                    .pan = UWB_PAN,
+                    .dst = UWB_ADDR_BCAST,
+                    .src = uwb_my_addr,
+                },
+                .type = MSG_FINAL,
+            },
+        };
+
+        uwb_ts40_pack(final.poll_tx_ts, poll_tx_ts);
+        uwb_ts40_pack(final.final_tx_ts, final_tx_ts);
+
+        for (int i = 0; i < 3; i++) {
+            if (answered[i]) {
+                final.anchors[i].addr = anchor_addr[i];
+                uwb_ts40_pack(final.anchors[i].resp_rx_ts, resp_rx_ts[i]);
+            }
+            /* Left zeroed otherwise: addr 0x0000 marks a missed slot. */
+
+            LOG_DBG("final %u: A%d addr 0x%04X resp_rx_ts 0x%010" PRIx64,
+                    seq, i + 1, final.anchors[i].addr, resp_rx_ts[i]);
+        }
+
+        LOG_DBG("final %u: poll_tx_ts 0x%010" PRIx64 ", final_tx_ts 0x%010" PRIx64,
+                seq, poll_tx_ts, final_tx_ts);
+
+        if (uwb_send_delayed((uint8_t *)&final, sizeof(final)) != 0) {
+            LOG_WRN("final %u not sent", seq);
         }
 
         n++;

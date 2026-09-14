@@ -47,6 +47,15 @@ extern uint16_t uwb_my_addr;
  *  every 500 ms; none of that timing is enforced here, this header
  *  only names the constants the schedule is built from. */
 #define SLOT_UUS        600
+
+/*! One UWB microsecond (UUS) in device time units.
+ *
+ *  A UUS is 512 / 499.2 MHz, roughly 1.0256 us — the same unit
+ *  dwt_setrxtimeout() takes. A device time unit (DTU) is
+ *  1 / (499.2 MHz * 128), roughly 15.65 ps. One UUS therefore holds
+ *  65536 DTU. Both derive from the 499.2 MHz base frequency of the
+ *  IEEE 802.15.4 UWB standard. */
+#define UUS_TO_DWT_TIME 65536
 #define SLOT_POLL       (0 * SLOT_UUS)
 #define SLOT_RESP_A1    (1 * SLOT_UUS)
 #define SLOT_RESP_A2    (2 * SLOT_UUS)
@@ -88,6 +97,17 @@ struct uwb_msg {
  *  choice is to carry all 5 bytes untouched and let the Pi do the
  *  arithmetic. */
 typedef uint8_t uwb_ts40_t[5];
+
+/*! Pack a 40-bit device timestamp into wire format, least significant
+ *  byte first — the reverse of the byte order uwb_rx_timestamp() /
+ *  uwb_tx_timestamp() reassemble on read. */
+static inline void uwb_ts40_pack(uwb_ts40_t out, uint64_t ts)
+{
+	for (int i = 0; i < 5; i++) {
+		out[i] = (uint8_t)(ts & 0xFF);
+		ts >>= 8;
+	}
+}
 
 /*! One anchor's slot in the Final frame: which anchor answered (0x0000
  *  if it missed its slot) and the rx timestamp of its Response. */

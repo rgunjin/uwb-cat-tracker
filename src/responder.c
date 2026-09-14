@@ -7,15 +7,6 @@
 #include "uwb_msg.h"
 #include "responder.h"
 
-/*! One UWB microsecond (UUS) in device time units.
- *
- *  A UUS is 512 / 499.2 MHz, roughly 1.0256 us — the same unit
- *  dwt_setrxtimeout() takes. A device time unit (DTU) is
- *  1 / (499.2 MHz * 128), roughly 15.65 ps. One UUS therefore holds
- *  65536 DTU. Both derive from the 499.2 MHz base frequency of the
- *  IEEE 802.15.4 UWB standard. */
-#define UUS_TO_DWT_TIME             65536
-
 /*! Delay from receiving the poll to transmitting the response, in UUS.
  *
  *  This is not a free choice. The responder must have time to read the

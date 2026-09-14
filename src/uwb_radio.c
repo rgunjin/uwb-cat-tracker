@@ -100,22 +100,38 @@ int uwb_receive(uint8_t *buf, uint16_t buf_size, uint16_t *len, uint32_t timeout
 	return -EIO;
 }
 
-uint64_t uwb_rx_timestamp(void)
+/* The chip returns timestamp bytes least significant first, so the loop
+ * runs backwards: shift what we have up, then add the next byte down
+ * from the top. Shared by uwb_rx_timestamp() and uwb_tx_timestamp(),
+ * which differ only in which register the bytes come from. */
+static uint64_t ts40_unpack(const uint8_t ts_tab[5])
 {
-    uint8_t ts_tab[5];
     uint64_t ts = 0;
 
-    dwt_readrxtimestamp(ts_tab);
-
-    /* The chip returns the bytes least significant first, so the loop
-	 * runs backwards: shift what we have up, then add the next byte
-	 * down from the top. */
     for (int i = 4; i >= 0; i--) {
         ts <<= 8;
         ts |= ts_tab[i];
     }
 
     return ts;
+}
+
+uint64_t uwb_rx_timestamp(void)
+{
+    uint8_t ts_tab[5];
+
+    dwt_readrxtimestamp(ts_tab);
+
+    return ts40_unpack(ts_tab);
+}
+
+uint64_t uwb_tx_timestamp(void)
+{
+    uint8_t ts_tab[5];
+
+    dwt_readtxtimestamp(ts_tab);
+
+    return ts40_unpack(ts_tab);
 }
 
 int uwb_send_delayed(const uint8_t *data, uint16_t len)
