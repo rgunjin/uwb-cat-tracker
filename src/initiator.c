@@ -9,17 +9,9 @@
 #include "uwb_radio.h"
 #include "uwb_msg.h"
 #include "initiator.h"
+#include "storage.h"
 
 LOG_MODULE_REGISTER(initiator, LOG_LEVEL_INF);
-
-/* How long the tag stays listening for Response frames after the Poll,
- * covering all three response slots. Not yet derived from SLOT_UUS /
- * SLOT_FINAL: uwb_receive() only takes a millisecond-resolution
- * timeout, far coarser than the ~3 ms the real schedule spans, so this
- * is a generous placeholder rather than a synced window. Tightening
- * it to the real schedule is follow-up work once the tag starts
- * scheduling its own delayed transmissions (Final, T013). */
-#define RESPONSE_WINDOW_MS  100
 
 /* Gap between exchanges */
 #define POLL_INTERVAL_MS    500
@@ -46,12 +38,14 @@ static int anchor_index(uint16_t addr)
 
 void run_initiator(void)
 {
-    uint8_t buf[32];
+    uint8_t buf[64];
     uint16_t len;
     uint8_t seq = 0;
     uint32_t n = 0;
     uint32_t ok = 0;
     uint32_t lost = 0;
+
+    uint16_t ant_dly = storage_get_ant_dly();
 
     LOG_INF("initiator started, addr 0x%04X", uwb_my_addr);
 
@@ -83,21 +77,25 @@ void run_initiator(void)
         bool answered[3] = { false, false, false };
         uint64_t resp_rx_ts[3] = { 0 };
         int n_answered = 0;
-        uint32_t win_start = k_uptime_get_32();
 
-        while (n_answered < 3) {
-            uint32_t elapsed = k_uptime_get_32() - win_start;
+         /* One window per anchor slot. dwt_setrxtimeout() takes a
+         * duration from the moment the receiver is enabled, not a
+         * point on the schedule, so these are the gaps between
+         * slots: the first covers Poll to A1's slot, the rest one
+         * slot each. */
+        static const uint32_t slot_window_uus[3] = {
+            2 * SLOT_UUS,   /* 1200: room for A1 to answer */
+            SLOT_UUS,       /* 600:  A2 */
+            SLOT_UUS,       /* 600:  A3 */
+        };
 
-            if (elapsed >= RESPONSE_WINDOW_MS) {
-                break;
-            }
-
-            int err = uwb_receive(buf, sizeof(buf), &len,
-                                   RESPONSE_WINDOW_MS - elapsed);
+        for (int slot = 0; slot < 3 && n_answered < 3; slot++) {
+            int err = uwb_receive(buf, sizeof(buf), &len, slot_window_uus[slot]);
 
             if (err == -ETIMEDOUT) {
-                /* Nothing more is coming in this window. */
-                break;
+                /* Nobody answered in this window. The next anchor
+                 * may still come, so keep going. */
+                continue;
             }
 
             if (err != 0) {
@@ -130,8 +128,7 @@ void run_initiator(void)
             }
 
             /* Latched by the chip at reception; stable until the next
-             * dwt_rxenable(), which does not happen before this is
-             * read. */
+             * dwt_rxenable(), which does not happen before this is read. */
             resp_rx_ts[idx] = uwb_rx_timestamp();
             answered[idx] = true;
             n_answered++;
@@ -156,7 +153,38 @@ void run_initiator(void)
 
         dwt_setdelayedtrxtime(final_tx_time);
 
-        uint64_t final_tx_ts = ((uint64_t)final_tx_time) << 8;
+        /* Work out the timestamp the Final will carry.
+         *
+         * The tag cannot read its own transmit timestamp here — the
+         * frame has not gone out yet, and by the time it has, the
+         * timestamp would have to be inside it already. Delayed
+         * transmission breaks that circle: the moment is scheduled in
+         * advance, so it can be computed rather than measured. Same
+         * reasoning as resp_tx_ts in responder.c.
+         *
+         * Three corrections turn the scheduled time into the timestamp
+         * the chip will actually record:
+         *
+         *   & 0xFFFFFFFE  DX_TIME ignores the low 9 bits of the 40-bit
+         *                 time. Eight of them were dropped by the >> 8
+         *                 above; this clears the ninth. Skip it and the
+         *                 timestamp is off by up to 256 ticks, about
+         *                 1.2 m of range.
+         *
+         *   << 8          back to the full 40-bit scale. The cast to
+         *                 uint64_t comes first: in 32-bit arithmetic
+         *                 the shift would throw away the top byte.
+         *
+         *   + ant_dly     DX_TIME specifies the RMARKER without the
+         *                 antenna delay (UM 3.3), but a timestamp read
+         *                 from the chip includes it. Computing one by
+         *                 hand means adding it back.
+         *
+         * This value leaves the node and is used off-board to compute
+         * a range, so an error here is silent: the frame is well
+         * formed, the arithmetic downstream succeeds, and the answer
+         * is simply wrong. */
+        uint64_t final_tx_ts = ((uint64_t)(final_tx_time & 0xFFFFFFFEUL) << 8) + ant_dly;
 
         struct uwb_final_msg final = {
             .msg = {

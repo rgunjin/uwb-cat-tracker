@@ -39,29 +39,32 @@ int uwb_send(const uint8_t *data, uint16_t len)
     return  0;
 }
 
-int uwb_receive(uint8_t *buf, uint16_t buf_size, uint16_t *len, uint32_t timeout_ms)
+int uwb_receive(uint8_t *buf, uint16_t buf_size, uint16_t *len, uint16_t timeout_uus)
 {
     uint32 status;
-    uint32_t start;
      
-    /* No timeout: wait indefinitely for a frame */
-    dwt_setrxtimeout(0);
+    dwt_setrxtimeout(timeout_uus);
     
-    /* Same write-1-to-clear as in run_tx(), for the RX flags. */
-    dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_GOOD | SYS_STATUS_ALL_RX_ERR);
+    /* Write-1-to-clear, same as in uwb_send(). The timeout flag goes
+     * too: a leftover RXRFTO would make the next call return immediately. */
+    dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_GOOD |
+                                     SYS_STATUS_ALL_RX_ERR |
+                                     SYS_STATUS_ALL_RX_TO);
 
     dwt_rxenable(DWT_START_RX_IMMEDIATE);
 
-    start = k_uptime_get_32();
+    uint32_t guard_start = k_uptime_get_32();
 
     do {
         status = dwt_read32bitreg(SYS_STATUS_ID);
 
-        if (timeout_ms != 0 && k_uptime_get_32() - start > timeout_ms) {
+        /* Hardware guard, not the timeout: the chip owns that now. This
+         * only catches a chip that stopped answering at all. */
+        if (timeout_uus != 0 && k_uptime_get_32() - guard_start > 1000) {
             dwt_forcetrxoff();
             return -ETIMEDOUT;
         }
-    } while (!(status & (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_ERR)));
+    } while (!(status & (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_ERR | SYS_STATUS_ALL_RX_TO)));
 
     if (status & SYS_STATUS_RXFCG) {
         uint32 finfo = dwt_read32bitreg(RX_FINFO_ID);
@@ -74,13 +77,19 @@ int uwb_receive(uint8_t *buf, uint16_t buf_size, uint16_t *len, uint32_t timeout
         rx_len -= 2;
 
         if (rx_len > buf_size) {
-            rx_len = buf_size;
+            LOG_ERR("frame %u bytes, buffer %u", rx_len, buf_size);
+            return -EMSGSIZE;
         }
 
         dwt_readrxdata(buf, rx_len, 0);
         *len = rx_len;
 
         return 0;
+    }
+
+    if (status & SYS_STATUS_ALL_RX_TO) {
+        dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_TO);
+        return -ETIMEDOUT;
     }
 
     LOG_WRN("RX error, SYS_STATUS 0x%08X  PRD:%d SFDD:%d PHD:%d "
@@ -136,9 +145,6 @@ uint64_t uwb_tx_timestamp(void)
 
 int uwb_send_delayed(const uint8_t *data, uint16_t len)
 {
-    uint32 status;
-    uint32_t start;
-
     /* Same write-1-to-clear as in uwb_send(). */
 	dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_TX);
 
@@ -146,6 +152,7 @@ int uwb_send_delayed(const uint8_t *data, uint16_t len)
 	dwt_writetxfctrl(len + 2, 0, 0);
 
     if (dwt_starttx(DWT_START_TX_DELAYED) != DWT_SUCCESS) {
+        uint32 status;
         /* The scheduled moment has already passed. Nothing was sent,
 		 * so there is no point waiting for TXFRS. */
 		status = dwt_read32bitreg(SYS_STATUS_ID);
@@ -154,20 +161,12 @@ int uwb_send_delayed(const uint8_t *data, uint16_t len)
 		return -ETIME;
     }
 
-    /* Wait in wall-clock time rather than iterations: the frame does
-	 * not go out until the scheduled moment, which is a millisecond
-	 * or more away. */
-    start = k_uptime_get_32();
-
-    do {
-        status = dwt_read32bitreg(SYS_STATUS_ID);
-
-        if (k_uptime_get_32() - start > 20) {
-            LOG_ERR("TX timeout, SYS_STATUS 0x%08X", status);
-            dwt_forcetrxoff();
-            return -EIO;
-        }
-    } while (!(status & SYS_STATUS_TXFRS));
-
+    /* Scheduled, not sent. The chip stays in IDLE until the moment
+     * arrives (UM 2.3) and then transmits on its own; there is
+     * nothing here to wait for. Blocking on TXFRS would only hold
+     * the CPU through a delay the hardware already handles — and
+     * cancelling on timeout, as this used to do, aborted a
+     * transmission that was still pending. Whether the frame
+     * actually went out is answered by the peer receiving it. */
     return 0;
 }

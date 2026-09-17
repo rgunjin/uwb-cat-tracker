@@ -25,7 +25,7 @@ int uwb_send(const uint8_t *data, uint16_t len);
  * @return 0 on success, -ETIMEDOUT on timeout, -EIO on a receive error
  */
 int uwb_receive(uint8_t *buf, uint16_t buf_size, uint16_t *len,
-		uint32_t timeout_ms);
+		uint16_t timeout_uus);
 
 /*! @brief Read the RX timestamp of the last received frame, all 40 bits.
  *
