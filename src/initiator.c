@@ -10,6 +10,7 @@
 #include "uwb_msg.h"
 #include "initiator.h"
 #include "storage.h"
+#include "zephyr/sys/byteorder.h"
 
 LOG_MODULE_REGISTER(initiator, LOG_LEVEL_INF);
 
@@ -48,6 +49,11 @@ void run_initiator(void)
     uint16_t ant_dly = storage_get_ant_dly();
 
     LOG_INF("initiator started, addr 0x%04X", uwb_my_addr);
+
+    /* Per-anchor reply counts. ok alone counts a cycle as good if
+     * anyone answered, so a single dead anchor out of three would
+     * never show up in it. */
+    uint32_t heard[3] = { 0, 0, 0 };
 
     while (1) {
         struct uwb_msg poll = {
@@ -137,7 +143,9 @@ void run_initiator(void)
         }
 
         for (int i = 0; i < 3; i++) {
-            if (!answered[i]) {
+            if (answered[i]) {
+                heard[i]++;
+            } else {
                 LOG_DBG("poll %u: no response from A%d", seq, i + 1);
             }
         }
@@ -199,13 +207,13 @@ void run_initiator(void)
             },
         };
 
-        uwb_ts40_pack(final.poll_tx_ts, poll_tx_ts);
-        uwb_ts40_pack(final.final_tx_ts, final_tx_ts);
+        sys_put_le40(poll_tx_ts, final.poll_tx_ts);
+        sys_put_le40(final_tx_ts, final.final_tx_ts);
 
         for (int i = 0; i < 3; i++) {
             if (answered[i]) {
                 final.anchors[i].addr = anchor_addr[i];
-                uwb_ts40_pack(final.anchors[i].resp_rx_ts, resp_rx_ts[i]);
+                sys_put_le40(resp_rx_ts[i], final.anchors[i].resp_rx_ts);
             }
             /* Left zeroed otherwise: addr 0x0000 marks a missed slot. */
 
@@ -228,7 +236,8 @@ void run_initiator(void)
         }
 
         if ((n % STATS_WINDOW) == 0) {
-            LOG_INF("n=%u ok %u lost %u", n, ok, lost);
+            LOG_INF("n=%u ok %u lost %u | A1 %u A2 %u A3 %u",
+                    n, ok, lost, heard[0], heard[1], heard[2]);
         }
 
         seq++;

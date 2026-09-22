@@ -90,30 +90,19 @@ struct uwb_msg {
 	uint8_t type;
 } __packed;
 
-/*! Raw 40-bit device timestamp, byte order as dwt_readtxtimestamp()
- *  / dwt_readrxtimestamp() write it (least significant byte first).
- *  Kept as bytes, not a scalar type: the 32-bit counter wraps every
- *  ~67 ms and truncating to it would fail silently, so the only safe
- *  choice is to carry all 5 bytes untouched and let the Pi do the
- *  arithmetic. */
-typedef uint8_t uwb_ts40_t[5];
-
-/*! Pack a 40-bit device timestamp into wire format, least significant
- *  byte first — the reverse of the byte order uwb_rx_timestamp() /
- *  uwb_tx_timestamp() reassemble on read. */
-static inline void uwb_ts40_pack(uwb_ts40_t out, uint64_t ts)
-{
-	for (int i = 0; i < 5; i++) {
-		out[i] = (uint8_t)(ts & 0xFF);
-		ts >>= 8;
-	}
-}
+/*! Timestamps travel as raw 40-bit device times, five bytes, least
+ *  significant first — the order dwt_readtxtimestamp() /
+ *  dwt_readrxtimestamp() write them. Packed and unpacked with
+ *  sys_put_le40() / sys_get_le40() from <zephyr/sys/byteorder.h>.
+ *
+ *  Not truncated to 32 bits: the 32-bit counter wraps every ~67 ms,
+ *  and a truncation would fail silently. */
 
 /*! One anchor's slot in the Final frame: which anchor answered (0x0000
  *  if it missed its slot) and the rx timestamp of its Response. */
 struct uwb_final_anchor {
 	uint16_t    addr;
-	uwb_ts40_t  resp_rx_ts;
+	uint8_t resp_rx_ts[5];
 } __packed;
 
 /*! Final: broadcast by the tag once all three response slots have
@@ -121,10 +110,10 @@ struct uwb_final_anchor {
  *  many anchors actually answered — the window is fixed by the
  *  schedule, not by how many Responses came in. */
 struct uwb_final_msg {
-	struct uwb_msg           msg;
-	uwb_ts40_t                poll_tx_ts;
+	struct uwb_msg            msg;
+	uint8_t                   poll_tx_ts[5];
 	struct uwb_final_anchor   anchors[3];
-	uwb_ts40_t                final_tx_ts;
+	uint8_t                   final_tx_ts[5];
 } __packed;
 
 BUILD_ASSERT(sizeof(struct uwb_final_msg) == 41,
@@ -136,9 +125,9 @@ BUILD_ASSERT(sizeof(struct uwb_final_msg) == 41,
 struct uwb_report_msg {
 	struct uwb_msg  msg;
 	uint8_t         tag_seq;
-	uwb_ts40_t      poll_rx_ts;
-	uwb_ts40_t      resp_tx_ts;
-	uwb_ts40_t      final_rx_ts;
+	uint8_t         poll_rx_ts[5];
+	uint8_t         resp_tx_ts[5];
+	uint8_t         final_rx_ts[5];
 	uint32_t        ratio_x100;
 } __packed;
 
