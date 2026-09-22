@@ -8,7 +8,6 @@
 #include "deca_device_api.h"
 #include "deca_regs.h"
 #include "deca_types.h"
-#include "uwb_msg.h"
 
 LOG_MODULE_REGISTER(uwb_radio, LOG_LEVEL_INF);
 
@@ -64,7 +63,7 @@ int uwb_receive(uint8_t *buf, uint16_t buf_size, uint16_t *len, uint16_t timeout
          * only catches a chip that stopped answering at all. */
         if (timeout_uus != 0 && k_uptime_get_32() - guard_start > 1000) {
             dwt_forcetrxoff();
-            return -ETIMEDOUT;
+            return -EIO;
         }
     } while (!(status & (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_ERR | SYS_STATUS_ALL_RX_TO)));
 
@@ -74,6 +73,7 @@ int uwb_receive(uint8_t *buf, uint16_t buf_size, uint16_t *len, uint16_t timeout
 
         /* The length in RX_FINFO includes the two CRC bytes. */
         if (rx_len < 2) {
+            LOG_ERR("RXFCG set but RX_FINFO length %u", rx_len);
             return -EIO;
         }
         rx_len -= 2;
@@ -108,7 +108,7 @@ int uwb_receive(uint8_t *buf, uint16_t buf_size, uint16_t *len, uint16_t timeout
 
 	dwt_rxreset();
 
-	return -EIO;
+	return -EBADMSG;
 }
 
 uint64_t uwb_rx_timestamp(void)
