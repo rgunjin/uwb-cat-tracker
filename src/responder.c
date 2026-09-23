@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/byteorder.h>
 #include <deca_device_api.h>
 
 #include "storage.h"
@@ -25,6 +26,11 @@
  *  uwb_msg.h), so the delay is looked up once at startup rather than
  *  fixed at compile time. */
 
+/*! Speed of light in air, not in vacuum — the value Decawave use in
+ *  their ranging examples. The difference is about 0.03 %, 3 cm
+ *  at 100 m. */
+#define SPEED_OF_LIGHT  299702547.0
+
 LOG_MODULE_REGISTER(responder, LOG_LEVEL_INF);
 
 void run_responder(void)
@@ -37,6 +43,7 @@ void run_responder(void)
     uint32_t other = 0;
     uint32_t finals = 0;
     uint32_t ts_zero = 0;
+    uint32_t missed = 0;    /* Final came, but the tag never heard our Response */
     uint32_t resp_dly_uus;
 
     uint16_t ant_dly = storage_get_ant_dly();
@@ -117,18 +124,62 @@ void run_responder(void)
             finals++;
             cycle_open = false;
             
-            /* Four of the six timestamps a range needs are now in
-             * hand; the tag's three travel in the frame. Nothing is
-             * computed here yet — that is the next step. */
-            LOG_DBG("final seq %u: poll_rx %llu resp_tx %llu final_rx %llu",
-                    rx->hdr.seq, poll_rx_ts, resp_tx_ts, final_rx_ts);
+            struct uwb_final_msg *fin = (struct uwb_final_msg *)buf;
+
+            /* Find our own entry by address, not by slot index: the
+             * tag fills the entries of anchors it heard and leaves
+             * the others zeroed. */
+            int me = -1;
+
+            for (int i = 0; i < 3; i++) {
+                if (sys_get_le16((uint8_t *)&fin->anchors[i].addr) == uwb_my_addr) {
+                    me = i;
+                    break;
+                }
+            }
+
+            if (me < 0) {
+                missed++;
+                goto next;
+            }
+
+            uint64_t poll_tx_ts = sys_get_le40(fin->poll_tx_ts);
+            uint64_t resp_rx_ts = sys_get_le40(fin->anchors[me].resp_rx_ts);
+            uint64_t final_tx_ts = sys_get_le40(fin->final_tx_ts);
+
+            /* Four intervals, each measured by one clock only (UM 12.3.2,
+             * Decawave ex_05b). Subtracted in 32 bits on purpose: the
+             * 40-bit counter wraps every ~17 s, and unsigned 32-bit
+             * arithmetic works modulo 2^32, so a wrap between two
+             * timestamps of the same cycle (3 ms apart) is harmless. */
+            uint32_t ra = (uint32_t)resp_rx_ts  - (uint32_t)poll_tx_ts;   /* tag:    round 1 */
+            uint32_t db = (uint32_t)resp_tx_ts  - (uint32_t)poll_rx_ts;   /* anchor: reply 1 */
+            uint32_t rb = (uint32_t)final_rx_ts - (uint32_t)resp_tx_ts;   /* anchor: round 2 */
+            uint32_t da = (uint32_t)final_tx_ts - (uint32_t)resp_rx_ts;   /* tag:    reply 2 */
+
+            /* double, not float: Ra*Rb is around 4e16, and a 24-bit
+             * float mantissa would lose the difference entirely. */
+            double tof_dtu = ((double)ra * rb - (double)da * db)
+                           / ((double)ra + rb + da + db);
+
+             int32_t d_mm = (int32_t)(tof_dtu * DWT_TIME_UNITS * SPEED_OF_LIGHT * 1000.0);
+
+             /* Self-check. resp_tx_ts was computed in advance from the
+             * scheduled time (mask, shift, antenna delay); by now the
+             * Response has gone out and the chip holds the real value.
+             * They must agree. A nonzero difference means one of the
+             * three corrections is wrong. */
+            int32_t tx_check = (int32_t)((uint32_t)uwb_tx_timestamp() - (uint32_t)resp_tx_ts);
+
+            LOG_INF("range seq %u: %d mm  tx_check %d", rx->hdr.seq, d_mm, tx_check);
 
             goto next;
+
         }
 
         /* ---- Poll: opens a cycle ---- */
         if (rx->type != MSG_POLL) {
-            bad++;
+            other++;
             goto next;
         }
         /* Full 40 bits: the addition below would overflow in 32,
@@ -166,12 +217,13 @@ void run_responder(void)
         cycle_open = true;
         count++;
 
-next:
-        if (((count + bad + late) % 20) == 0 && count > 0) {
-            LOG_INF("replies: %u, late %u, bad %u", count, late, bad);
-            LOG_INF("finals: %u, ts_zero %u", finals, ts_zero);
+        if ((count % 20) == 0) {
+            LOG_INF("replies: %u, late %u, bad %u, other %u",
+                    count, late, bad, other);
+            LOG_INF("finals: %u, ts_zero %u, missed %u",
+                    finals, ts_zero, missed);
         }
-
+next:
         /* Give the log thread a slot. Safe here: the reply is
          * already on air, so nothing time-critical is pending. */
         k_msleep(1);
